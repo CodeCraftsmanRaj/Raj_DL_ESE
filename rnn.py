@@ -54,8 +54,10 @@ def train_model(model, x_train, y_train, epochs=20):
     model = model.to(device)
     loader = DataLoader(TensorDataset(x_train, y_train), batch_size=32, shuffle=True)
     losses = []
-    
+
     for epoch in range(epochs):
+        model.train()
+        batch_losses = []
         for x_batch, y_batch in loader:
             x_batch, y_batch = x_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
@@ -63,8 +65,11 @@ def train_model(model, x_train, y_train, epochs=20):
             loss = criterion(outputs, y_batch)
             loss.backward()
             optimizer.step()
-        losses.append(loss.item())
-    
+            batch_losses.append(loss.item())
+
+        epoch_loss = float(np.mean(batch_losses)) if batch_losses else 0.0
+        losses.append(epoch_loss)
+
     return model, losses
 
 model_rnn = RNNModel()

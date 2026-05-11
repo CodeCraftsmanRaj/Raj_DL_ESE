@@ -65,8 +65,11 @@ def train_model(model, x_train, y_train, epochs=20):
     optimizer = optim.Adam(model.parameters())
     model = model.to(device)
     loader = DataLoader(TensorDataset(x_train, y_train), batch_size=32, shuffle=True)
-    
+    losses = []
+
     for epoch in range(epochs):
+        model.train()
+        batch_losses = []
         for x_batch, y_batch in loader:
             x_batch, y_batch = x_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
@@ -74,22 +77,26 @@ def train_model(model, x_train, y_train, epochs=20):
             loss = criterion(outputs, y_batch)
             loss.backward()
             optimizer.step()
-    
+            batch_losses.append(loss.item())
+
+        epoch_loss = float(np.mean(batch_losses)) if batch_losses else 0.0
+        losses.append(epoch_loss)
+
     model.eval()
     with torch.no_grad():
         pred = model(x_test.to(device))
         acc = (pred.argmax(1) == y_test.to(device)).float().mean().item()
-    return model, acc
+    return model, acc, losses
 
 model_gru = GRU()
 start_gru = time.time()
-_, acc_gru = train_model(model_gru, x_train, y_train, epochs=20)
+model_gru, acc_gru, losses_gru = train_model(model_gru, x_train, y_train, epochs=20)
 time_gru = time.time() - start_gru
 print(f"GRU: Test Accuracy = {acc_gru:.4f}, Training Time = {time_gru:.2f}s")
 
 model_lstm = LSTM()
 start_lstm = time.time()
-_, acc_lstm = train_model(model_lstm, x_train, y_train, epochs=20)
+model_lstm, acc_lstm, losses_lstm = train_model(model_lstm, x_train, y_train, epochs=20)
 time_lstm = time.time() - start_lstm
 print(f"LSTM: Test Accuracy = {acc_lstm:.4f}, Training Time = {time_lstm:.2f}s")
 
@@ -110,7 +117,7 @@ for units in [32, 64, 128]:
             return out
     
     m = GRUUnits(units)
-    _, acc = train_model(m, x_train, y_train, epochs=20)
+    _, acc, _ = train_model(m, x_train, y_train, epochs=20)
     gru_results[units] = acc
     print(f"GRU Units {units}: Test Accuracy = {acc:.4f}")
 
@@ -175,36 +182,9 @@ print(f"Avg Inference Time per batch: {avg_inference_time*1000:.2f}ms - Suitable
 plt.figure(figsize=(14, 8))
 
 plt.subplot(2, 3, 1)
-criterion = nn.CrossEntropyLoss()
-opt_gru = optim.Adam(model_gru.parameters())
-opt_lstm = optim.Adam(model_lstm.parameters())
-model_gru = model_gru.to(device)
-model_lstm = model_lstm.to(device)
-
-losses_gru = []
-losses_lstm = []
-loader = DataLoader(TensorDataset(x_train, y_train), batch_size=32, shuffle=True)
-model_gru.train()
-model_lstm.train()
-for epoch in range(10):
-    for x_batch, y_batch in loader:
-        x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-        opt_gru.zero_grad()
-        out = model_gru(x_batch)
-        loss = criterion(out, y_batch)
-        losses_gru.append(loss.item())
-        loss.backward()
-        opt_gru.step()
-        
-        opt_lstm.zero_grad()
-        out = model_lstm(x_batch)
-        loss = criterion(out, y_batch)
-        losses_lstm.append(loss.item())
-        loss.backward()
-        opt_lstm.step()
-
-plt.plot(losses_gru[:50], label='GRU')
-plt.plot(losses_lstm[:50], label='LSTM')
+# Use epoch-averaged losses collected during training for smoother curves
+plt.plot(losses_gru, label='GRU')
+plt.plot(losses_lstm, label='LSTM')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
