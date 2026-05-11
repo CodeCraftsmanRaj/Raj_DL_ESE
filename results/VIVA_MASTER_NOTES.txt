@@ -1,0 +1,209 @@
+RAJ DL ESE - VIVA MASTER NOTES (EXPERIMENT-WISE + SUB-EXPERIMENT-WISE)
+
+Project goal:
+This lab set compares major deep learning families under a unified lightweight pipeline so each experiment is fast, reproducible, and explainable.
+
+Where results are saved:
+All plots are saved in the results folder with experiment labels:
+- exp1_mlp.png, exp1_depth_analysis.png
+- exp2_cnn.png
+- exp3_transfer_learning.png
+- exp4_cnn_vs_transfer.png
+- exp5_performance_analysis.png
+- exp6_object_detection.png
+- exp7_rnn.png
+- exp8_lstm.png
+- exp9_gru.png
+- exp10_generated_final.png, exp10_progression.png, exp10_gan_training.png
+
+Global implementation pattern used in all files:
+1) Create/load dataset (subset/synthetic/professional text corpus)
+2) Define model class using torch.nn.Module
+3) Train with Adam + proper loss function
+4) Evaluate with model.eval() + torch.no_grad()
+5) Save figure in results/ with experiment label
+
+============================================================
+EXP 1 - MLP (mlp.py)
+Sub-Experiment 1: Activation function impact
+- What code does: compares relu, tanh, sigmoid using same dense architecture.
+- Metric: test accuracy and training loss curve.
+- Latest run: relu=0.9140, tanh=0.9240, sigmoid=0.8730.
+- Viva explanation: activation controls non-linearity and gradient behavior; tanh gave better balance than sigmoid here.
+- If asked to modify: edit list activations = ['relu','tanh','sigmoid'] and class MLPActivation.
+
+Sub-Experiment 2: Depth impact
+- What code does: compares 1,2,3,4 hidden-layer depth variants.
+- Latest run: depth1=0.9230, depth2=0.9320, depth3=0.9230, depth4=0.9100.
+- Viva explanation: moderate depth improved representation, too much depth hurt due to optimization/generalization tradeoff.
+- If asked to modify: edit depths = [1,2,3,4] and hidden width in class MLPDepth.
+
+Sub-Experiment 3: Convergence behavior
+- What code does: computes epoch of minimum loss for each depth.
+- Latest run: depth2 converged fastest (epoch 6).
+- If asked to modify: increase epochs in train_model(..., epochs=...).
+
+Sub-Experiment 4: Stability
+- What code does: compares loss trajectories across activations and depths.
+- Output files: exp1_mlp.png and exp1_depth_analysis.png.
+
+============================================================
+EXP 2 - CNN (cnn.py)
+Sub-Experiment 1: CNN vs fully-connected baseline
+- What code does: trains CNN and dense model on same MNIST subset.
+- Viva explanation: CNN preserves spatial structure and shares parameters, so it usually outperforms dense baseline.
+
+Sub-Experiment 2: Pooling analysis
+- What code does: compares pooling choices/sizes.
+- Viva explanation: pooling gives translation tolerance and lowers compute.
+
+Sub-Experiment 3: Feature map behavior
+- What code does: architecture setup allows observing effect of conv blocks.
+- Viva explanation: deeper conv stacks learn increasingly abstract features.
+
+Sub-Experiment 4: Convolution parameter effect
+- What code does: compares kernel/filter configurations.
+- Viva explanation: more filters increase capacity; larger kernels increase receptive field but may over-smooth.
+
+Output: exp2_cnn.png
+
+============================================================
+EXP 3 - Transfer Learning (transfer_learning.py)
+Sub-Experiment 1: Frozen feature extractor
+- What code does: MobileNetV2 pretrained backbone frozen; only head trained.
+
+Sub-Experiment 2: Fine-tuning
+- What code does: unfreezes selected later layers.
+- Viva explanation: fine-tuning adapts high-level features to target domain.
+
+Sub-Experiment 3: Small-data behavior
+- What code does: compares performance with very limited data.
+
+Sub-Experiment 4: Efficiency
+- What code does: tracks performance vs compute for frozen vs fine-tuned setup.
+
+Output: exp3_transfer_learning.png
+
+============================================================
+EXP 4 - CNN vs Transfer (cnn_vs_transfer.py)
+Sub-Experiment 1: Accuracy comparison
+Sub-Experiment 2: Training time comparison
+Sub-Experiment 3: Dataset-size sensitivity
+Sub-Experiment 4: Practical scenario discussion
+- Viva explanation: transfer is stronger for smaller datasets and faster convergence; scratch can win with enough data/domain match.
+
+Output: exp4_cnn_vs_transfer.png
+
+============================================================
+EXP 5 - Performance Analysis (performance_analysis.py)
+Sub-Experiment 1: Learning-rate effect (e.g., 0.001/0.01/0.1)
+Sub-Experiment 2: Epoch-count effect (underfit vs overfit trend)
+Sub-Experiment 3: Train/validation curve interpretation
+Sub-Experiment 4: Hyperparameter combination comparison
+- Viva explanation: low LR is stable but slower; high LR may diverge; best config balances speed and stability.
+
+Output: exp5_performance_analysis.png
+
+============================================================
+EXP 6 - Object Detection (object_detection.py)
+Sub-Experiment 1: Detect objects using YOLO
+Sub-Experiment 2: Confidence score analysis
+Sub-Experiment 3: Multi-object detection behavior
+Sub-Experiment 4: Image-quality degradation impact
+- Viva explanation: confidence captures detector certainty; blur/noise reduce localization confidence and consistency.
+
+Output: exp6_object_detection.png
+
+============================================================
+EXP 7 - Simple RNN (rnn.py)
+Text dataset quality update:
+- Uses professional corpus from data.txt (no toy repetitive sentence generation inside script).
+
+Sub-Experiment 1: Next-character prediction using RNN
+- Latest run accuracy: 0.1472.
+
+Sub-Experiment 2: Sequence length impact
+- Latest run: len10=0.1130, len20=0.1472, len40=0.1525.
+- Viva explanation: longer context can improve next-token prediction up to model capacity.
+
+Sub-Experiment 3: Long-dependency limitation
+- Demonstrated by lower robustness on longer context settings.
+
+Sub-Experiment 4: Short vs long sequence contrast
+- Latest run: short=1.0000, long=0.2050.
+- Viva explanation: short repetitive samples are easy to memorize; long context is harder for vanilla RNN.
+
+Output: exp7_rnn.png
+
+============================================================
+EXP 8 - LSTM (lstm.py)
+Sub-Experiment 1: LSTM vs RNN
+- Latest run: LSTM=0.1338, RNN=0.1472.
+- Viva explanation: on small/quick setting, LSTM can be similar or slightly lower; benefit appears with larger context/data.
+
+Sub-Experiment 2: Convergence comparison
+- Latest run best-loss epoch: LSTM=5, RNN=12.
+
+Sub-Experiment 3: Unit scaling
+- Latest run: 32=0.1338, 64=0.1338, 128=0.1472.
+
+Sub-Experiment 4: Memory mechanism analysis
+- Latest run: short_term=0.1245, long_term=0.1285.
+
+Output: exp8_lstm.png
+
+============================================================
+EXP 9 - GRU (gru.py)
+Sub-Experiment 1: GRU vs LSTM comparison
+- Latest run: GRU=0.1505, LSTM=0.1304.
+
+Sub-Experiment 2: Speed comparison
+- Latest run time: GRU=1.47s, LSTM=0.79s (this run favored LSTM speed).
+- Viva explanation: GRU is often faster in many setups, but actual runtime depends on hardware/backend/settings.
+
+Sub-Experiment 3: Efficiency tradeoff sweep
+- Latest run configs:
+  {units:32,epochs:10} acc=0.1338 time=0.38s
+  {units:64,epochs:20} acc=0.1338 time=0.76s
+  {units:128,epochs:30} acc=0.1538 time=1.14s
+
+Sub-Experiment 4: Real-time suitability
+- Latest run avg inference: 0.15 ms/batch, suitable for real-time.
+
+Output: exp9_gru.png
+
+============================================================
+EXP 10 - GAN (gan.py)
+Sub-Experiment 1: Generator and discriminator setup
+Sub-Experiment 2: Training progression in generated samples
+Sub-Experiment 3: Generator/discriminator loss dynamics
+Sub-Experiment 4: Final synthetic sample quality
+- Viva explanation: stable GAN training requires balanced discriminator strength and careful learning rates.
+
+Outputs:
+- exp10_generated_final.png
+- exp10_progression.png
+- exp10_gan_training.png
+
+============================================================
+FAST VIVA CHANGE GUIDE (what to edit quickly during questioning)
+1) Change dataset size:
+- In MNIST scripts, adjust subset slicing counts near dataset creation.
+
+2) Change model capacity:
+- Edit hidden units/channels in class __init__ definitions.
+
+3) Change optimizer behavior:
+- Edit learning rate in optim.Adam(..., lr=...)
+- Optionally switch optimizer to SGD to explain convergence differences.
+
+4) Change training budget:
+- Edit epochs in train_model calls.
+
+5) Change sequence difficulty (RNN/LSTM/GRU):
+- Edit seq_length list (e.g., [10,20,40,80]) and corpus size in data.txt.
+
+6) If asked why one run differs from another:
+- Explain stochastic training: random initialization, mini-batch sampling, and hardware backend variation.
+
+END OF SINGLE MASTER FILE
