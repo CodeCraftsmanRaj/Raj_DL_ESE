@@ -136,7 +136,7 @@ plt.bar(labels, values)
 plt.ylabel('Count')
 plt.title('EXP 6: Detection Analysis')
 plt.tight_layout()
-plt.savefig('exp6_object_detection.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp6_object_detection.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 6 Complete: Object detection analysis")

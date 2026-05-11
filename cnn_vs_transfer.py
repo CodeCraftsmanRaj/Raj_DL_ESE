@@ -122,7 +122,7 @@ plt.ylabel('Accuracy')
 plt.legend()
 plt.title('EXP 4: Dataset Size Impact')
 plt.tight_layout()
-plt.savefig('exp4_cnn_vs_transfer.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp4_cnn_vs_transfer.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 4 Complete: CNN vs Transfer Learning comparison")

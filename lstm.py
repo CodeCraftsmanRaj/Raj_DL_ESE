@@ -5,11 +5,18 @@ from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 
-with open('data.txt', 'w') as f:
-    f.write('the quick brown fox jumps over the lazy dog ' * 50)
-
 with open('data.txt', 'r') as f:
-    text = f.read()
+    text = f.read().strip()
+
+if len(text) < 500:
+    text = (
+        "Machine learning systems are evaluated across data quality, model capacity, and optimization stability. "
+        "In professional lab environments, results must be reproducible, measurable, and clearly interpretable. "
+        "Sequence models are expected to learn context, preserve signal over longer spans, and avoid unstable training dynamics. "
+        "A strong evaluation pipeline reports accuracy, convergence behavior, error modes, and computational efficiency. "
+        "Teams should compare architectures under the same protocol, document assumptions, and justify hyperparameter choices. "
+        "Reliable model development requires disciplined experiments, transparent reporting, and structured analysis of trade offs. "
+    )
 
 chars = sorted(set(text))
 char_to_idx = {c: i for i, c in enumerate(chars)}
@@ -193,7 +200,7 @@ plt.ylabel('Loss')
 plt.legend()
 plt.title('EXP 8: LSTM Configuration Comparison')
 plt.tight_layout()
-plt.savefig('exp8_lstm.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp8_lstm.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 8 Complete: LSTM long-term dependency analysis")

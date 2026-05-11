@@ -105,7 +105,7 @@ for i in range(5):
     axes[i].axis('off')
 plt.suptitle('EXP 10: Generated Samples at Final Epoch')
 plt.tight_layout()
-plt.savefig('exp10_generated_final.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp10_generated_final.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 fig, axes = plt.subplots(4, 5, figsize=(12, 8))
@@ -120,7 +120,7 @@ for e, epoch_idx in enumerate(range(0, epochs, max(1, step))):
 
 plt.suptitle('EXP 10: Generated Output Progression')
 plt.tight_layout()
-plt.savefig('exp10_progression.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp10_progression.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print(f"Final Generator Loss: {histories['gen_loss'][-1]:.4f}")
@@ -141,7 +141,7 @@ axes[1].set_xlabel('Epoch')
 axes[1].set_ylabel('Accuracy')
 axes[1].set_title('EXP 10: Discriminator Performance')
 plt.tight_layout()
-plt.savefig('exp10_gan_training.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp10_gan_training.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 10 Complete: GAN synthetic data generation")

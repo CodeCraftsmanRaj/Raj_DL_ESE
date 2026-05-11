@@ -165,7 +165,7 @@ plt.xticks(range(len(configs_str)), ['LR:0.001', 'LR:0.01', 'LR:0.1'], rotation=
 plt.ylabel('Accuracy')
 plt.title('EXP 5: Hyperparameter Comparison')
 plt.tight_layout()
-plt.savefig('exp5_performance_analysis.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp5_performance_analysis.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 5 Complete: Performance and hyperparameter analysis")

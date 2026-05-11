@@ -80,7 +80,7 @@ plt.legend()
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.title('EXP 1: Activation Function Impact on Training Stability')
-plt.savefig('exp1_mlp.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp1_mlp.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 depths = [1, 2, 3, 4]
@@ -126,7 +126,7 @@ plt.xlabel('Epoch')
 plt.ylabel('Validation Loss')
 plt.title('EXP 1: Convergence by Depth')
 plt.tight_layout()
-plt.savefig('exp1_depth_analysis.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp1_depth_analysis.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 1 Complete: MLP analysis with activation functions and depth variations")

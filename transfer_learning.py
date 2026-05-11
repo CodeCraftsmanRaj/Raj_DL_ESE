@@ -112,7 +112,7 @@ plt.bar(['Frozen', 'Fine-tuned', 'Small Dataset'], [val_acc_frozen, val_acc_fine
 plt.ylabel('Accuracy')
 plt.title('EXP 3: Performance Summary')
 plt.tight_layout()
-plt.savefig('exp3_transfer_learning.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp3_transfer_learning.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 3 Complete: Transfer Learning analysis")

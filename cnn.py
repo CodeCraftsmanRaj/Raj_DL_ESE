@@ -156,7 +156,7 @@ plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
 plt.title('EXP 2: CNN Accuracy')
 plt.tight_layout()
-plt.savefig('exp2_cnn.png', dpi=100, bbox_inches='tight')
+plt.savefig('results/exp2_cnn.png', dpi=100, bbox_inches='tight')
 plt.close()
 
 print("EXP 2 Complete: CNN architecture analysis")
