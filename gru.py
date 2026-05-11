@@ -1,4 +1,7 @@
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -19,35 +22,68 @@ for i in range(len(text) - seq_length):
     x_data.append([char_to_idx[c] for c in text[i:i+seq_length]])
     y_data.append(char_to_idx[text[i+seq_length]])
 
-x_data = np.array(x_data) / len(chars)
-y_data = tf.keras.utils.to_categorical(y_data, len(chars))
+x_data = torch.tensor(x_data, dtype=torch.float32).unsqueeze(-1) / len(chars)
+y_data = torch.tensor(y_data)
 
 split = int(0.8 * len(x_data))
 x_train, x_test = x_data[:split], x_data[split:]
 y_train, y_test = y_data[:split], y_data[split:]
 
-model_gru = tf.keras.Sequential([
-    tf.keras.layers.GRU(64, activation='relu', input_shape=(seq_length, 1)),
-    tf.keras.layers.Dense(len(chars), activation='softmax')
-])
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-model_lstm = tf.keras.Sequential([
-    tf.keras.layers.LSTM(64, activation='relu', input_shape=(seq_length, 1)),
-    tf.keras.layers.Dense(len(chars), activation='softmax')
-])
+class GRU(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.gru = nn.GRU(1, 64, batch_first=True)
+        self.fc = nn.Linear(64, len(chars))
+    
+    def forward(self, x):
+        out, _ = self.gru(x)
+        out = self.fc(out[:, -1, :])
+        return out
 
-model_gru.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+class LSTM(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.lstm = nn.LSTM(1, 64, batch_first=True)
+        self.fc = nn.Linear(64, len(chars))
+    
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = self.fc(out[:, -1, :])
+        return out
+
+def train_model(model, x_train, y_train, epochs=20):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters())
+    model = model.to(device)
+    loader = DataLoader(TensorDataset(x_train, y_train), batch_size=32, shuffle=True)
+    
+    for epoch in range(epochs):
+        for x_batch, y_batch in loader:
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+            optimizer.zero_grad()
+            outputs = model(x_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+    
+    model.eval()
+    with torch.no_grad():
+        pred = model(x_test.to(device))
+        acc = (pred.argmax(1) == y_test.to(device)).float().mean().item()
+    return model, acc
+
+model_gru = GRU()
 start_gru = time.time()
-hist_gru = model_gru.fit(x_train, y_train, epochs=20, batch_size=32, validation_split=0.2, verbose=0)
+_, acc_gru = train_model(model_gru, x_train, y_train, epochs=20)
 time_gru = time.time() - start_gru
-loss_gru, acc_gru = model_gru.evaluate(x_test, y_test, verbose=0)
 print(f"GRU: Test Accuracy = {acc_gru:.4f}, Training Time = {time_gru:.2f}s")
 
-model_lstm.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model_lstm = LSTM()
 start_lstm = time.time()
-hist_lstm = model_lstm.fit(x_train, y_train, epochs=20, batch_size=32, validation_split=0.2, verbose=0)
+_, acc_lstm = train_model(model_lstm, x_train, y_train, epochs=20)
 time_lstm = time.time() - start_lstm
-loss_lstm, acc_lstm = model_lstm.evaluate(x_test, y_test, verbose=0)
 print(f"LSTM: Test Accuracy = {acc_lstm:.4f}, Training Time = {time_lstm:.2f}s")
 
 print(f"GRU vs LSTM - Accuracy Diff: {acc_gru - acc_lstm:.4f}, Speed Improvement: {time_lstm/time_gru:.2f}x")
@@ -55,14 +91,20 @@ print(f"GRU vs LSTM - Accuracy Diff: {acc_gru - acc_lstm:.4f}, Speed Improvement
 gru_results = {}
 
 for units in [32, 64, 128]:
-    m = tf.keras.Sequential([
-        tf.keras.layers.GRU(units, activation='relu', input_shape=(seq_length, 1)),
-        tf.keras.layers.Dense(len(chars), activation='softmax')
-    ])
-    m.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    h = m.fit(x_train, y_train, epochs=20, batch_size=32, validation_split=0.2, verbose=0)
-    _, acc = m.evaluate(x_test, y_test, verbose=0)
-    gru_results[units] = {'accuracy': acc, 'history': h}
+    class GRUUnits(nn.Module):
+        def __init__(self, u):
+            super().__init__()
+            self.gru = nn.GRU(1, u, batch_first=True)
+            self.fc = nn.Linear(u, len(chars))
+        
+        def forward(self, x):
+            out, _ = self.gru(x)
+            out = self.fc(out[:, -1, :])
+            return out
+    
+    m = GRUUnits(units)
+    _, acc = train_model(m, x_train, y_train, epochs=20)
+    gru_results[units] = acc
     print(f"GRU Units {units}: Test Accuracy = {acc:.4f}")
 
 efficiency_configs = [
@@ -74,30 +116,50 @@ efficiency_configs = [
 efficiency_results = {}
 
 for config in efficiency_configs:
-    m = tf.keras.Sequential([
-        tf.keras.layers.GRU(config['units'], activation='relu', input_shape=(seq_length, 1)),
-        tf.keras.layers.Dense(len(chars), activation='softmax')
-    ])
-    m.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    class GRUEff(nn.Module):
+        def __init__(self, u):
+            super().__init__()
+            self.gru = nn.GRU(1, u, batch_first=True)
+            self.fc = nn.Linear(u, len(chars))
+        
+        def forward(self, x):
+            out, _ = self.gru(x)
+            out = self.fc(out[:, -1, :])
+            return out
+    
+    m = GRUEff(config['units'])
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(m.parameters())
+    m = m.to(device)
+    loader = DataLoader(TensorDataset(x_train, y_train), batch_size=32, shuffle=True)
+    
     start = time.time()
-    h = m.fit(x_train, y_train, epochs=config['epochs'], batch_size=32, validation_split=0.2, verbose=0)
+    for epoch in range(config['epochs']):
+        for x_batch, y_batch in loader:
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+            optimizer.zero_grad()
+            outputs = m(x_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
     train_time = time.time() - start
-    _, acc = m.evaluate(x_test, y_test, verbose=0)
+    
+    m.eval()
+    with torch.no_grad():
+        pred = m(x_test.to(device))
+        acc = (pred.argmax(1) == y_test.to(device)).float().mean().item()
+    
     efficiency_results[str(config)] = {'accuracy': acc, 'time': train_time}
     print(f"Config {config}: Accuracy = {acc:.4f}, Time = {train_time:.2f}s")
 
-realtime_model = tf.keras.Sequential([
-    tf.keras.layers.GRU(32, activation='relu', input_shape=(seq_length, 1)),
-    tf.keras.layers.Dense(len(chars), activation='softmax')
-])
-
-realtime_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-realtime_model.fit(x_train, y_train, epochs=10, batch_size=32, verbose=0)
-
 inference_times = []
+realtime_model = GRUUnits(32)
+realtime_model = realtime_model.to(device)
+
 for _ in range(100):
     start = time.time()
-    _ = realtime_model.predict(x_test[:10], verbose=0)
+    with torch.no_grad():
+        _ = realtime_model(x_test[:10].to(device))
     inference_times.append(time.time() - start)
 
 avg_inference_time = np.mean(inference_times)
@@ -106,8 +168,36 @@ print(f"Avg Inference Time per batch: {avg_inference_time*1000:.2f}ms - Suitable
 plt.figure(figsize=(14, 8))
 
 plt.subplot(2, 3, 1)
-plt.plot(hist_gru.history['loss'], label='GRU')
-plt.plot(hist_lstm.history['loss'], label='LSTM')
+criterion = nn.CrossEntropyLoss()
+opt_gru = optim.Adam(model_gru.parameters())
+opt_lstm = optim.Adam(model_lstm.parameters())
+model_gru = model_gru.to(device)
+model_lstm = model_lstm.to(device)
+
+losses_gru = []
+losses_lstm = []
+loader = DataLoader(TensorDataset(x_train, y_train), batch_size=32, shuffle=True)
+model_gru.train()
+model_lstm.train()
+for epoch in range(10):
+    for x_batch, y_batch in loader:
+        x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+        opt_gru.zero_grad()
+        out = model_gru(x_batch)
+        loss = criterion(out, y_batch)
+        losses_gru.append(loss.item())
+        loss.backward()
+        opt_gru.step()
+        
+        opt_lstm.zero_grad()
+        out = model_lstm(x_batch)
+        loss = criterion(out, y_batch)
+        losses_lstm.append(loss.item())
+        loss.backward()
+        opt_lstm.step()
+
+plt.plot(losses_gru[:50], label='GRU')
+plt.plot(losses_lstm[:50], label='LSTM')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
@@ -119,16 +209,15 @@ plt.ylabel('Training Time (s)')
 plt.title('EXP 9: Training Speed')
 
 plt.subplot(2, 3, 3)
-plt.plot(hist_gru.history['accuracy'], label='GRU Train')
-plt.plot(hist_gru.history['val_accuracy'], label='GRU Val')
+plt.plot(losses_gru[:50], label='GRU')
 plt.xlabel('Epoch')
-plt.ylabel('Accuracy')
+plt.ylabel('Loss')
 plt.legend()
 plt.title('EXP 9: GRU Performance')
 
 plt.subplot(2, 3, 4)
 units = list(gru_results.keys())
-accs = [gru_results[u]['accuracy'] for u in units]
+accs = [gru_results[u] for u in units]
 plt.plot(units, accs, marker='o')
 plt.xlabel('GRU Units')
 plt.ylabel('Accuracy')

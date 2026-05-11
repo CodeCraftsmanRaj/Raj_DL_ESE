@@ -1,4 +1,7 @@
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -18,108 +21,154 @@ for i in range(len(text) - seq_length):
     x_data.append([char_to_idx[c] for c in text[i:i+seq_length]])
     y_data.append(char_to_idx[text[i+seq_length]])
 
-x_data = np.array(x_data) / len(chars)
-y_data = tf.keras.utils.to_categorical(y_data, len(chars))
+x_data = torch.tensor(x_data, dtype=torch.float32).unsqueeze(-1) / len(chars)
+y_data = torch.tensor(y_data)
 
 split = int(0.8 * len(x_data))
 x_train, x_test = x_data[:split], x_data[split:]
 y_train, y_test = y_data[:split], y_data[split:]
 
-model_lstm = tf.keras.Sequential([
-    tf.keras.layers.LSTM(64, activation='relu', input_shape=(seq_length, 1)),
-    tf.keras.layers.Dense(len(chars), activation='softmax')
-])
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-model_rnn = tf.keras.Sequential([
-    tf.keras.layers.SimpleRNN(64, activation='relu', input_shape=(seq_length, 1)),
-    tf.keras.layers.Dense(len(chars), activation='softmax')
-])
+class LSTM(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.lstm = nn.LSTM(1, 64, batch_first=True)
+        self.fc = nn.Linear(64, len(chars))
+    
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = self.fc(out[:, -1, :])
+        return out
 
-model_lstm.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-hist_lstm = model_lstm.fit(x_train, y_train, epochs=20, batch_size=32, validation_split=0.2, verbose=0)
-loss_lstm, acc_lstm = model_lstm.evaluate(x_test, y_test, verbose=0)
+class RNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.rnn = nn.RNN(1, 64, batch_first=True)
+        self.fc = nn.Linear(64, len(chars))
+    
+    def forward(self, x):
+        out, _ = self.rnn(x)
+        out = self.fc(out[:, -1, :])
+        return out
+
+def train_model(model, x_train, y_train, epochs=20):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters())
+    model = model.to(device)
+    loader = DataLoader(TensorDataset(x_train, y_train), batch_size=32, shuffle=True)
+    losses = []
+    
+    for epoch in range(epochs):
+        for x_batch, y_batch in loader:
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+            optimizer.zero_grad()
+            outputs = model(x_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+        losses.append(loss.item())
+    
+    return model, losses
+
+model_lstm = LSTM()
+model_lstm, losses_lstm = train_model(model_lstm, x_train, y_train, epochs=20)
+model_lstm.eval()
+with torch.no_grad():
+    pred = model_lstm(x_test.to(device))
+    acc_lstm = (pred.argmax(1) == y_test.to(device)).float().mean().item()
 print(f"LSTM: Test Accuracy = {acc_lstm:.4f}")
 
-model_rnn.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-hist_rnn = model_rnn.fit(x_train, y_train, epochs=20, batch_size=32, validation_split=0.2, verbose=0)
-loss_rnn, acc_rnn = model_rnn.evaluate(x_test, y_test, verbose=0)
+model_rnn = RNN()
+model_rnn, losses_rnn = train_model(model_rnn, x_train, y_train, epochs=20)
+model_rnn.eval()
+with torch.no_grad():
+    pred = model_rnn(x_test.to(device))
+    acc_rnn = (pred.argmax(1) == y_test.to(device)).float().mean().item()
 print(f"RNN: Test Accuracy = {acc_rnn:.4f}")
 
-print(f"LSTM Best Val Loss Epoch: {np.argmin(hist_lstm.history['val_loss'])}")
-print(f"RNN Best Val Loss Epoch: {np.argmin(hist_rnn.history['val_loss'])}")
-
+print(f"LSTM Best Loss Epoch: {np.argmin(losses_lstm)}")
+print(f"RNN Best Loss Epoch: {np.argmin(losses_rnn)}")
 print(f"LSTM Improvement: {acc_lstm - acc_rnn:.4f}")
-
-layer_configs = [
-    {'units': 32},
-    {'units': 64},
-    {'units': 128}
-]
 
 lstm_results = {}
 
-for config in layer_configs:
-    m = tf.keras.Sequential([
-        tf.keras.layers.LSTM(config['units'], activation='relu', input_shape=(seq_length, 1)),
-        tf.keras.layers.Dense(len(chars), activation='softmax')
-    ])
-    m.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    h = m.fit(x_train, y_train, epochs=20, batch_size=32, validation_split=0.2, verbose=0)
-    _, acc = m.evaluate(x_test, y_test, verbose=0)
-    lstm_results[config['units']] = {'accuracy': acc, 'history': h}
-    print(f"LSTM Units {config['units']}: Test Accuracy = {acc:.4f}")
-
-memory_impact = {
-    'short_term': [],
-    'long_term': []
-}
-
-short_seq_data = x_data[:len(x_data)//2]
-long_seq_data = x_data[len(x_data)//2:]
-
-for seq_data, key in [(short_seq_data, 'short_term'), (long_seq_data, 'long_term')]:
-    if len(seq_data) > 0:
-        split = int(0.8 * len(seq_data))
-        x_tr = seq_data[:split]
-        x_te = seq_data[split:]
-        y_tr = y_data[:len(x_tr)]
-        y_te = y_data[len(x_tr):len(x_tr)+len(x_te)]
+for units in [32, 64, 128]:
+    class LSTMUnits(nn.Module):
+        def __init__(self, u):
+            super().__init__()
+            self.lstm = nn.LSTM(1, u, batch_first=True)
+            self.fc = nn.Linear(u, len(chars))
         
-        m = tf.keras.Sequential([
-            tf.keras.layers.LSTM(64, activation='relu', input_shape=(seq_length, 1)),
-            tf.keras.layers.Dense(len(chars), activation='softmax')
-        ])
-        m.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-        m.fit(x_tr, y_tr, epochs=15, batch_size=32, verbose=0)
-        _, acc = m.evaluate(x_te, y_te, verbose=0)
+        def forward(self, x):
+            out, _ = self.lstm(x)
+            out = self.fc(out[:, -1, :])
+            return out
+    
+    m = LSTMUnits(units)
+    m, losses = train_model(m, x_train, y_train, epochs=20)
+    m.eval()
+    with torch.no_grad():
+        pred = m(x_test.to(device))
+        acc = (pred.argmax(1) == y_test.to(device)).float().mean().item()
+    lstm_results[units] = {'accuracy': acc, 'losses': losses}
+    print(f"LSTM Units {units}: Test Accuracy = {acc:.4f}")
+
+split_short = len(x_data) // 3
+split_long = 2 * len(x_data) // 3
+
+short_data = (x_data[:split_short], y_data[:split_short])
+long_data = (x_data[split_long:], y_data[split_long:])
+
+memory_impact = {'short_term': 0, 'long_term': 0}
+
+for key, (x_seq, y_seq) in [('short_term', short_data), ('long_term', long_data)]:
+    if len(x_seq) > 0:
+        m = LSTM()
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(m.parameters())
+        m = m.to(device)
+        loader = DataLoader(TensorDataset(x_seq, y_seq), batch_size=16, shuffle=True)
+        
+        for epoch in range(15):
+            for x_batch, y_batch in loader:
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+                optimizer.zero_grad()
+                outputs = m(x_batch)
+                loss = criterion(outputs, y_batch)
+                loss.backward()
+                optimizer.step()
+        
+        m.eval()
+        with torch.no_grad():
+            pred = m(x_seq.to(device))
+            acc = (pred.argmax(1) == y_seq.to(device)).float().mean().item()
         memory_impact[key] = acc
         print(f"LSTM {key} dependency: Accuracy = {acc:.4f}")
 
 plt.figure(figsize=(14, 8))
 
 plt.subplot(2, 3, 1)
-plt.plot(hist_lstm.history['loss'], label='LSTM')
-plt.plot(hist_rnn.history['loss'], label='RNN')
+plt.plot(losses_lstm, label='LSTM')
+plt.plot(losses_rnn, label='RNN')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
 plt.title('EXP 8: LSTM vs RNN Loss')
 
 plt.subplot(2, 3, 2)
-plt.plot(hist_lstm.history['val_loss'], label='LSTM Val Loss')
-plt.plot(hist_rnn.history['val_loss'], label='RNN Val Loss')
+plt.plot(losses_lstm, label='LSTM Val Loss')
+plt.plot(losses_rnn, label='RNN Val Loss')
 plt.xlabel('Epoch')
-plt.ylabel('Validation Loss')
+plt.ylabel('Loss')
 plt.legend()
 plt.title('EXP 8: Convergence Speed')
 
 plt.subplot(2, 3, 3)
-plt.plot(hist_lstm.history['accuracy'], label='LSTM Train')
-plt.plot(hist_lstm.history['val_accuracy'], label='LSTM Val')
-plt.plot(hist_rnn.history['accuracy'], label='RNN Train')
-plt.plot(hist_rnn.history['val_accuracy'], label='RNN Val')
+plt.plot(losses_lstm, label='LSTM Train')
+plt.plot(losses_rnn, label='RNN Train')
 plt.xlabel('Epoch')
-plt.ylabel('Accuracy')
+plt.ylabel('Loss')
 plt.legend()
 plt.title('EXP 8: Training Trajectory')
 
@@ -137,10 +186,10 @@ plt.ylabel('Accuracy')
 plt.title('EXP 8: Memory Mechanisms')
 
 plt.subplot(2, 3, 6)
-for units in units:
-    plt.plot(lstm_results[units]['history'].history['val_loss'], label=f'{units} Units')
+for u in units:
+    plt.plot(lstm_results[u]['losses'], label=f'{u} Units')
 plt.xlabel('Epoch')
-plt.ylabel('Validation Loss')
+plt.ylabel('Loss')
 plt.legend()
 plt.title('EXP 8: LSTM Configuration Comparison')
 plt.tight_layout()

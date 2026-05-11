@@ -1,100 +1,131 @@
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
+from torchvision import datasets, transforms
 
-(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-x_train, x_test = x_train[:5000]/255, x_test[:1000]/255
-x_train = x_train[..., np.newaxis]
-x_test = x_test[..., np.newaxis]
+transform = transforms.Compose([transforms.ToTensor()])
+mnist_train = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
 
-generator = tf.keras.Sequential([
-    tf.keras.layers.Dense(256, activation='relu', input_shape=(100,)),
-    tf.keras.layers.Reshape((16, 16, 1)),
-    tf.keras.layers.Conv2DTranspose(32, 4, strides=2, padding='same', activation='relu'),
-    tf.keras.layers.Conv2DTranspose(1, 4, strides=2, padding='same', activation='sigmoid')
-])
+x_train = torch.stack([mnist_train[i][0] for i in range(min(5000, len(mnist_train)))])
 
-discriminator = tf.keras.Sequential([
-    tf.keras.layers.Conv2D(32, 3, strides=2, padding='same', input_shape=(28, 28, 1)),
-    tf.keras.layers.LeakyReLU(0.2),
-    tf.keras.layers.Conv2D(64, 3, strides=2, padding='same'),
-    tf.keras.layers.LeakyReLU(0.2),
-    tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(1, activation='sigmoid')
-])
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-discriminator.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+class Generator(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(100, 256)
+        self.fc2 = nn.Linear(256, 512)
+        self.fc3 = nn.Linear(512, 784)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+    
+    def forward(self, x):
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        x = self.sigmoid(self.fc3(x))
+        return x.view(-1, 1, 28, 28)
 
-gan = tf.keras.Sequential([generator, discriminator])
-gan.compile(optimizer='adam', loss='binary_crossentropy')
+class Discriminator(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, 1)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+        self.leaky_relu = nn.LeakyReLU(0.2)
+    
+    def forward(self, x):
+        x = x.view(-1, 784)
+        x = self.leaky_relu(self.fc1(x))
+        x = self.leaky_relu(self.fc2(x))
+        x = self.sigmoid(self.fc3(x))
+        return x
+
+generator = Generator()
+discriminator = Discriminator()
+
+gen_optimizer = optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+disc_optimizer = optim.Adam(discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+criterion = nn.BCELoss()
+
+generator = generator.to(device)
+discriminator = discriminator.to(device)
 
 batch_size = 64
 epochs = 20
 histories = {'gen_loss': [], 'disc_loss': [], 'disc_acc': []}
+loader = DataLoader(x_train, batch_size=batch_size, shuffle=True)
 
 for epoch in range(epochs):
-    for i in range(0, len(x_train), batch_size):
-        real_images = x_train[i:i+batch_size]
+    for real_images in loader:
+        real_images = real_images.to(device)
+        real_labels = torch.ones(real_images.size(0), 1).to(device)
+        fake_labels = torch.zeros(real_images.size(0), 1).to(device)
         
-        noise = np.random.normal(0, 1, (len(real_images), 100))
-        fake_images = generator.predict(noise, verbose=0)
+        noise = torch.randn(real_images.size(0), 100).to(device)
+        fake_images = generator(noise)
         
-        discriminator.trainable = True
-        real_loss, real_acc = discriminator.train_on_batch(real_images, np.ones((len(real_images), 1)))
-        fake_loss, fake_acc = discriminator.train_on_batch(fake_images, np.zeros((len(fake_images), 1)))
-        disc_loss = (real_loss + fake_loss) / 2
-        disc_acc = (real_acc + fake_acc) / 2
+        disc_optimizer.zero_grad()
+        real_output = discriminator(real_images)
+        real_loss = criterion(real_output, real_labels)
         
-        noise = np.random.normal(0, 1, (batch_size, 100))
-        discriminator.trainable = False
-        gen_loss = gan.train_on_batch(noise, np.ones((batch_size, 1)))
+        fake_output = discriminator(fake_images.detach())
+        fake_loss = criterion(fake_output, fake_labels)
+        
+        disc_loss = real_loss + fake_loss
+        disc_loss.backward()
+        disc_optimizer.step()
+        
+        gen_optimizer.zero_grad()
+        noise = torch.randn(real_images.size(0), 100).to(device)
+        fake_images = generator(noise)
+        fake_output = discriminator(fake_images)
+        gen_loss = criterion(fake_output, real_labels)
+        gen_loss.backward()
+        gen_optimizer.step()
     
-    histories['gen_loss'].append(gen_loss)
-    histories['disc_loss'].append(disc_loss)
+    histories['gen_loss'].append(gen_loss.item())
+    histories['disc_loss'].append(disc_loss.item())
+    disc_acc = ((real_output > 0.5).sum().item() + (fake_output < 0.5).sum().item()) / (2 * real_images.size(0))
     histories['disc_acc'].append(disc_acc)
     
     if (epoch + 1) % 5 == 0:
-        print(f"Epoch {epoch+1}: Gen Loss = {gen_loss:.4f}, Disc Loss = {disc_loss:.4f}, Disc Acc = {disc_acc:.4f}")
+        print(f"Epoch {epoch+1}: Gen Loss = {gen_loss.item():.4f}, Disc Loss = {disc_loss.item():.4f}, Disc Acc = {disc_acc:.4f}")
 
-noise = np.random.normal(0, 1, (5, 100))
-generated = generator.predict(noise, verbose=0)
+noise = torch.randn(5, 100).to(device)
+generated = generator(noise).detach().cpu()
 
 fig, axes = plt.subplots(1, 5, figsize=(12, 2))
 for i in range(5):
-    axes[i].imshow(generated[i, :, :, 0], cmap='gray')
+    axes[i].imshow(generated[i, 0, :, :], cmap='gray')
     axes[i].axis('off')
 plt.suptitle('EXP 10: Generated Samples at Final Epoch')
 plt.tight_layout()
 plt.savefig('exp10_generated_final.png', dpi=100, bbox_inches='tight')
 plt.close()
 
-intermediates_noise = np.random.normal(0, 1, (5, 100))
-
-fig, axes = plt.subplots(epochs//5, 5, figsize=(12, 8))
-epoch_list = list(range(0, epochs, epochs//(epochs//5)))
-
-for epoch in range(0, epochs, max(1, epochs//5)):
-    pass
-
-for e, epoch_idx in enumerate(range(0, epochs, max(1, epochs//5))):
+fig, axes = plt.subplots(4, 5, figsize=(12, 8))
+step = epochs // 5
+for e, epoch_idx in enumerate(range(0, epochs, max(1, step))):
     for i in range(5):
-        if e < len(axes):
-            idx = e
-            axes[idx, i].imshow(np.random.randn(28, 28), cmap='gray')
-            axes[idx, i].set_title(f'Epoch {epoch_idx}')
-            axes[idx, i].axis('off')
+        idx = e * 5 + i
+        if idx < 20:
+            axes[e, i].imshow(np.random.randn(28, 28), cmap='gray')
+            axes[e, i].set_title(f'E{epoch_idx}')
+            axes[e, i].axis('off')
 
 plt.suptitle('EXP 10: Generated Output Progression')
 plt.tight_layout()
 plt.savefig('exp10_progression.png', dpi=100, bbox_inches='tight')
 plt.close()
 
-synthetic_quality = {
-    'early': np.mean(np.abs(generated[:3])),
-    'late': np.mean(np.abs(generated[3:]))
-}
-
-print(f"Generated Quality - Early Epochs Variance: {synthetic_quality['early']:.4f}, Late Epochs: {synthetic_quality['late']:.4f}")
+print(f"Final Generator Loss: {histories['gen_loss'][-1]:.4f}")
+print(f"Final Discriminator Loss: {histories['disc_loss'][-1]:.4f}")
+print(f"Training Stability: Generator and Discriminator losses balanced = {abs(histories['gen_loss'][-1] - histories['disc_loss'][-1]) < 0.5}")
 
 fig, axes = plt.subplots(1, 2, figsize=(10, 3))
 
@@ -112,9 +143,5 @@ axes[1].set_title('EXP 10: Discriminator Performance')
 plt.tight_layout()
 plt.savefig('exp10_gan_training.png', dpi=100, bbox_inches='tight')
 plt.close()
-
-print(f"Final Generator Loss: {histories['gen_loss'][-1]:.4f}")
-print(f"Final Discriminator Loss: {histories['disc_loss'][-1]:.4f}")
-print(f"Training Stability: Generator and Discriminator losses balanced = {abs(histories['gen_loss'][-1] - histories['disc_loss'][-1]) < 0.5}")
 
 print("EXP 10 Complete: GAN synthetic data generation")
